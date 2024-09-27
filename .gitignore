@@ -1,0 +1,7 @@
+# venv
+venv
+
+.idea
+
+# Ignore the data to avoid pushing and pulling it
+data
