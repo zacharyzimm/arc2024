@@ -102,15 +102,39 @@ class OutputDecoder(nn.Module):
         self.N_max = N_max
 
         # layer to predict N
-        self.fc_N = nn.Linear(in_features=512, out_features=1)
-        # layer to predict values of N
+        self.fc1 = nn.Linear(in_features=512, out_features=1024)
+        self.fc2 = nn.Linear(in_features=1024, out_features=30)
+        self.leaky_relu = nn.LeakyReLU()
+        self.softmax = nn.Softmax()
+
+        # network to predict what values to put in N
+        self.fc_values = nn.Linear(in_features=512, out_features=1024)
+        self.conv1 = nn.Conv2d(in_channels=10, out_channels=10, kernel_size=1, stride=1)
+        self.softmax2d = nn.Softmax2d()
+
 
     def forward(self, x):
-        N_pred = self.fc_N(x).item()
-        self.fc_grid = nn.Linear(in_features=512, out_features=N_pred * N_pred * 10)
-        x = self.fc_grid(x)
-        # TODO: make it into an actual grid output by the decoder
-        return x
+        batch_size = x.size(0)
+
+        # Predict the size of the grid
+        vector_to_hidden_layer = self.fc1(x)
+        hidden_layer = self.leaky_relu(vector_to_hidden_layer)
+        hidden_layer_to_logits = self.fc2(hidden_layer)
+        N_logits = self.softmax(hidden_layer_to_logits)
+        N_pred = N_logits.argmax(dim=1).item()
+
+        # use the predicted size to construct a prediction grid
+        vector_to_values_hidden_layer = self.fc_values(x)
+        values_hidden_layer = self.leaky_relu(vector_to_values_hidden_layer)
+
+        self.fc_grid = nn.Linear(in_features=1024, out_features=N_pred * N_pred * 10)
+        vector_to_grid_shape = self.fc_grid(values_hidden_layer)
+        vector_as_grid = vector_to_grid_shape.view(batch_size, N_pred, N_pred, 10)
+        vector_to_image = vector_as_grid.permute(0, 3, 1, 2) # massage data into format expected by conv
+        conv_layer = self.leaky_relu(self.conv1(vector_to_image))
+        softmax = self.softmax2d(conv_layer)
+        results = softmax.argmax(dim=1)
+        return results
 
 
 
@@ -129,7 +153,22 @@ class TaskRepresentation(nn.Module):
         self.output_encoder = GridEmbedder()
         self.output_decoder = OutputDecoder()
 
-class TaskPerformer(nn.module):
+class ExampleNetwork(nn.Module):
+    """
+    The example network that maps from the set of encoded
+    training examples to a single vector, z_task
+    """
+    def __init__(self):
+        super(ExampleNetwork, self).__init__()
+
+    def forward(self, z):
+        """
+        :param z: a set of encoded training examples Set[tuple(
+        :return: a single mapped vector
+        """
+        z_task = z
+        return z_task
+
 
 
 
