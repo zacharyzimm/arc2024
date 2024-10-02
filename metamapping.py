@@ -227,6 +227,11 @@ class HyperNetwork(nn.Module):
     def __init__(self):
         super(HyperNetwork, self).__init__()
 
+    def forward(self, x):
+        parameter_space = dict()
+        return parameter_space
+
+
 class TaskNetwork(nn.Module):
     """
     Task network T that maps from Theta X Z to Z
@@ -234,8 +239,13 @@ class TaskNetwork(nn.Module):
     Once the parameters Theta have been specified by the Hyper Network,
     it serves as a mapping from Z to Z
     """
-    def __init__(self):
+    def __init__(self, theta: dict):
         super(TaskNetwork, self).__init__()
+        self.parameter_space: dict = theta
+
+    def forward(self, x):
+        z_task = None
+        return z_task
 
 
 

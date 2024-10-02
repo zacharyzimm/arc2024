@@ -4,18 +4,11 @@ from torch.utils.data import Dataset, DataLoader
 
 class MemoryCluster(nn.Module):
     """
-    A neural network cluster that can solve a particular task.
-
-    The weights for the task cluster are preserved if it can solve the task well
-
-    If existing clusters can be made, then no new cluster is made
+    A neural network cluster that is trained on a particular task
     """
 
     def __init__(self):
         super().__init__()
-        # TODO: allow the cluster to grow and change, or pre-define it?
-        # iterate over the training data for each pair until it reaches optimum
-        # growing cluster may be too complicated
 
 
 class InputCNN(nn.Module):
@@ -23,13 +16,16 @@ class InputCNN(nn.Module):
     CNN input network that extracts information from the
     grid being observed and passes it to each of the memory clusters
     """
+
     def __init__(self):
         super().__init__()
+
 
 class OutputLayer(nn.Module):
     """
     Aggregates the results from the memory clusters and makes a prediction
     """
+
     def __init__(self):
         super().__init__()
 
@@ -51,6 +47,7 @@ class BabyBrain(nn.Module):
 
     process needs some refining
     """
+
     def __init__(self):
         super().__init__()
         self._input = InputCNN()
@@ -67,7 +64,6 @@ class BabyBrain(nn.Module):
     def receive_input(self):
         pass
 
-
     def output(self):
         pass
 
@@ -76,6 +72,7 @@ class TaskDataset(Dataset):
     """
     Loads the entire task dataset
     """
+
     def __init__(self):
         pass
 
@@ -87,10 +84,10 @@ class Supervisor(nn.Module):
     """
     Supervisor runs the training process
     """
+
     def __init__(self):
         super().__init__()
         self.training_data = TaskDataset()
-        self.train_dataloader = DataLoader(self.training_data, batch_size=1, shuffle=True)
-
-
-
+        self.train_dataloader = DataLoader(
+            self.training_data, batch_size=1, shuffle=True
+        )
