@@ -200,6 +200,13 @@ class ExampleNetwork(nn.Module):
         :param z: a set of encoded training examples Set[tuple(
         :return: a single mapped vector
         """
+
+        # NOTE:
+
+        # mathematically, we're trying to find the vector that best maps
+        # from the input layer to the output layer, aggregated over each tuple
+        # or at least trying to approximate it
+        # TODO: make this a more efficient neural net that directly finds that vector
         batch_size, tuples_in_batch, input_or_output, vector_size = z.size()
         num_tuples = batch_size * tuples_in_batch
         # stack all the sets in the batch
