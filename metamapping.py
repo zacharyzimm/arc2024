@@ -221,7 +221,7 @@ class ExampleNetwork(nn.Module):
 
 class HyperNetwork(nn.Module):
     """
-    Hyper Network that maps from
+    HyperNetwork H that maps from
     Z (the embedding space) to Theta (the parameter space of the task network T)
     """
     def __init__(self):
@@ -229,7 +229,7 @@ class HyperNetwork(nn.Module):
 
 class TaskNetwork(nn.Module):
     """
-    Task network that maps from Theta X Z to Z
+    Task network T that maps from Theta X Z to Z
 
     Once the parameters Theta have been specified by the Hyper Network,
     it serves as a mapping from Z to Z
