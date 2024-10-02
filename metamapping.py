@@ -84,7 +84,9 @@ class GridEmbedder(nn.Module):
 
         # pass through convolutional layers
         x = self.fc1(x)
+        x = self.leaky_relu(x)
         x = self.fc2(x)
+        # x = self.softmax(x)
 
         return x
 
@@ -161,13 +163,52 @@ class ExampleNetwork(nn.Module):
     def __init__(self):
         super(ExampleNetwork, self).__init__()
 
+        # Map each tuple to the output vector
+        self.fc1 = nn.Linear(in_features=1024, out_features=512)
+        self.fc2 = nn.Linear(in_features=512, out_features=512)
+        self.leaky_relu = nn.LeakyReLU()
+
+        self.softmax = nn.Softmax()
+
+    def apply_attention(self, z):
+        """
+        Applies attention mechanism to condense tuples into a single vector.
+        :param z: Tensor of shape (num_tuples, 512)
+        :return: Tensor of shape (desired_output_size)
+        """
+        # Define attention layer if not already defined
+        if not hasattr(self, 'attention'):
+            self.attention = nn.Linear(512, 1)  # Maps each tuple's features to a single scalar
+
+        # Compute attention scores: (num_tuples, 1)
+        attention_scores = self.attention(z)  # Shape: (num_tuples, 1)
+
+        # Apply softmax to get attention weights: (num_tuples, 1)
+        attention_weights = torch.softmax(attention_scores, dim=0)  # Softmax over num_tuples
+
+        # Weighted sum of tuples: (512)
+        weighted_sum = torch.sum(attention_weights * z, dim=1)  # Shape: (512)
+
+        # Final condensation layer
+        condensed = self.fc2(weighted_sum)  # Shape: (desired_output_size)
+        return condensed
+
     def forward(self, z):
         """
         :param z: a set of encoded training examples Set[tuple(
         :return: a single mapped vector
         """
-        z_task = z
-        return z_task
+        batch_size, tuples_in_batch, input_or_output, vector_size = z.size()
+        num_tuples = batch_size * tuples_in_batch
+        # stack all the sets in the batch
+        z = z.view(num_tuples, input_or_output * vector_size)
+        z = torch.reshape(z, (1, num_tuples, 1024))
+        z = self.fc1(z)
+        z = self.leaky_relu(z)
+        # softmax to avoid gradient loss
+        z = self.softmax(z)
+        z = self.apply_attention(z)
+        return z
 
 
 
@@ -177,16 +218,20 @@ if __name__ == "__main__":
     decoder = OutputDecoder()
     with open("data/arc-agi_training_challenges.json", "r") as f:
         data = json.load(f)
-        for key in data.keys():
-            train_and_test_data = data[key]
-            for input_output_pair in train_and_test_data["train"]:
-                input = input_output_pair['input']
-                output = input_output_pair['output']
-                z_task = embedder(load_grid_to_tensor(input))
-                output = decoder(z_task)
-                breakpoint()
 
-# Basic Task:
-# Transform an image
+    example_network = ExampleNetwork()
+    for key in data.keys():
+        train_and_test_data = data[key]
+        batch = []
+        for input_output_pair in train_and_test_data["train"]:
+            input = input_output_pair['input']
+            output = input_output_pair['output']
+            z_input = embedder(load_grid_to_tensor(input))
+            z_output = embedder(load_grid_to_tensor(output))
 
-# Metamapping: type of transformation to apply
+            pair = torch.stack(tensors=(z_input, z_output), dim=1)
+            batch.append(pair)
+
+        batch = torch.stack(batch, dim=1)
+        z_task = example_network(batch)
+        breakpoint()
