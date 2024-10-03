@@ -223,13 +223,32 @@ class HyperNetwork(nn.Module):
     """
     HyperNetwork H that maps from
     Z (the embedding space) to Theta (the parameter space of the task network T)
+
+    Original paper used 4 layers, 512 hidden units
+    H output init. scale is 30 in visual tasks
     """
     def __init__(self):
         super(HyperNetwork, self).__init__()
+        self.fc1 = nn.Linear(in_features=512, out_features=256)
+        self.fc2 = nn.Linear(in_features=256, out_features=128)
+        self.fc3 = nn.Linear(in_features=128, out_features=64)
+        self.fc4 = nn.Linear(in_features=64, out_features=32)
+
+        self.leaky_relu = nn.LeakyReLU()
+
+        self.batch_norm = nn.BatchNorm1d
 
     def forward(self, x):
-        parameter_space = dict()
-        return parameter_space
+        """
+        Maps a vector x in the embedding space to a vector theta in the parameter space
+        :param x:
+        :return:
+        """
+        x = self.leaky_relu(self.fc1(x))
+        x = self.leaky_relu(self.fc2(x))
+        x = self.leaky_relu(self.fc3(x))
+        x = self.fc4(x)
+        return x
 
 
 class TaskNetwork(nn.Module):
@@ -239,13 +258,66 @@ class TaskNetwork(nn.Module):
     Once the parameters Theta have been specified by the Hyper Network,
     it serves as a mapping from Z to Z
     """
-    def __init__(self, theta: dict):
+    def __init__(self, hidden_dims: list[int]):
         super(TaskNetwork, self).__init__()
-        self.parameter_space: dict = theta
+        self.input_dim = 512
+        self.hidden_dims = hidden_dims
+        self.output_dim = 512
 
-    def forward(self, x):
-        z_task = None
-        return z_task
+        self.weight_shapes = []
+        self.bias_shapes = []
+        self.total_params = 0
+
+        layer_dims = [self.input_dim] + self.hidden_dims + [self.output_dim]
+        for i, dim in enumerate(layer_dims):
+            weight_shape = (layer_dims[i + 1], layer_dims[i])
+            bias_shape = (layer_dims[i + 1],)
+            self.weight_shapes.append(weight_shape)
+            self.bias_shapes.append(bias_shape)
+            self.total_params += weight_shape[0] * weight_shape[1] + bias_shape[0]
+
+
+    def _extract_weights_and_biases(self, theta):
+        """
+        Splits theta into weights and biases
+
+        :param theta:
+        :return:
+        """
+        params = []
+        idx = 0
+        for w_shape, b_shape in zip(self.weight_shapes, self.bias_shapes):
+            w_numel = w_shape[0] * w_shape[1]
+            b_numel = b_shape[0]
+
+            # Extract weight
+            w = z[idx: idx + w_numel].view(w_shape)
+            idx += w_numel
+
+            # Extract bias
+            b = z[idx: idx + b_numel].view(b_shape)
+            idx += b_numel
+
+            params.append((w, b))
+        return params
+
+    def forward(self, x, theta):
+        """
+
+        :param x: Input tensor to TaskNetwork, vector in embedding space
+        :param theta: Tensor output from the HyperNetwork, used to define parameters
+        :return:
+        """
+        assert theta.numel() == self.total_params, (
+            f"Size of theta ({theta.numel()}) does not match total parameters ({self.total_params})"
+        )
+
+        params = self._extract_weights_and_biases(theta)
+        for i, (w, b) in enumerate(params):
+            x = F.linear(x, w, b)
+            if i < len(params) - 1:
+                x = F.relu(x) # Activation for intermediary layers
+        return x
 
 
 
@@ -271,4 +343,12 @@ if __name__ == "__main__":
 
         batch = torch.stack(batch, dim=1)
         z_task = example_network(batch)
+
+        hypernet = HyperNetwork()
+
+        task_params = hypernet(z_task)
+
+        hidden_dims = [512]
+        tasknet = TaskNetwork(hidden_dims)
+
         breakpoint()
