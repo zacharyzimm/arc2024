@@ -229,10 +229,8 @@ class HyperNetwork(nn.Module):
     """
     def __init__(self):
         super(HyperNetwork, self).__init__()
-        self.fc1 = nn.Linear(in_features=512, out_features=256)
-        self.fc2 = nn.Linear(in_features=256, out_features=128)
-        self.fc3 = nn.Linear(in_features=128, out_features=64)
-        self.fc4 = nn.Linear(in_features=64, out_features=32)
+        self.fc1 = nn.Linear(in_features=512, out_features=1024)
+        self.fc2 = nn.Linear(in_features=1024, out_features=512 * 3 * 2)
 
         self.leaky_relu = nn.LeakyReLU()
 
@@ -245,9 +243,7 @@ class HyperNetwork(nn.Module):
         :return:
         """
         x = self.leaky_relu(self.fc1(x))
-        x = self.leaky_relu(self.fc2(x))
-        x = self.leaky_relu(self.fc3(x))
-        x = self.fc4(x)
+        x = self.fc2(x)
         return x
 
 
@@ -264,41 +260,19 @@ class TaskNetwork(nn.Module):
         self.hidden_dims = hidden_dims
         self.output_dim = 512
 
-        self.weight_shapes = []
-        self.bias_shapes = []
-        self.total_params = 0
-
         layer_dims = [self.input_dim] + self.hidden_dims + [self.output_dim]
-        for i, dim in enumerate(layer_dims):
-            weight_shape = (layer_dims[i + 1], layer_dims[i])
-            bias_shape = (layer_dims[i + 1],)
-            self.weight_shapes.append(weight_shape)
-            self.bias_shapes.append(bias_shape)
-            self.total_params += weight_shape[0] * weight_shape[1] + bias_shape[0]
+        self.num_layers=len(layer_dims)
+        self.total_params = 2*len(layer_dims) * 512
 
 
-    def _extract_weights_and_biases(self, theta):
+    def _extract_weights_and_biases(self, theta, num_layers):
         """
         Splits theta into weights and biases
 
         :param theta:
         :return:
         """
-        params = []
-        idx = 0
-        for w_shape, b_shape in zip(self.weight_shapes, self.bias_shapes):
-            w_numel = w_shape[0] * w_shape[1]
-            b_numel = b_shape[0]
-
-            # Extract weight
-            w = z[idx: idx + w_numel].view(w_shape)
-            idx += w_numel
-
-            # Extract bias
-            b = z[idx: idx + b_numel].view(b_shape)
-            idx += b_numel
-
-            params.append((w, b))
+        params = theta.view(num_layers, 2, 512)
         return params
 
     def forward(self, x, theta):
@@ -312,9 +286,9 @@ class TaskNetwork(nn.Module):
             f"Size of theta ({theta.numel()}) does not match total parameters ({self.total_params})"
         )
 
-        params = self._extract_weights_and_biases(theta)
-        for i, (w, b) in enumerate(params):
-            x = F.linear(x, w, b)
+        params = self._extract_weights_and_biases(theta, self.num_layers)
+        for i, (weight, bias) in enumerate(params):
+            x = x * weight + bias
             if i < len(params) - 1:
                 x = F.relu(x) # Activation for intermediary layers
         return x
@@ -350,5 +324,9 @@ if __name__ == "__main__":
 
         hidden_dims = [512]
         tasknet = TaskNetwork(hidden_dims)
+
+        z_transformedtask = tasknet(x=z_task, theta=task_params)
+
+
 
         breakpoint()
