@@ -132,7 +132,7 @@ class OutputDecoder(nn.Module):
         hidden_layer = self.leaky_relu(vector_to_hidden_layer)
         hidden_layer_to_logits = self.fc2(hidden_layer)
         N_logits = self.softmax(hidden_layer_to_logits)
-        N_pred = N_logits.argmax(dim=1).item()
+        N_pred = N_logits.argmax(dim=0).item()
 
         # use the predicted size to construct a prediction grid
         vector_to_values_hidden_layer = self.fc_values(x)
@@ -140,8 +140,8 @@ class OutputDecoder(nn.Module):
 
         self.fc_grid = nn.Linear(in_features=1024, out_features=N_pred * N_pred * 10)
         vector_to_grid_shape = self.fc_grid(values_hidden_layer)
-        vector_as_grid = vector_to_grid_shape.view(batch_size, N_pred, N_pred, 10)
-        vector_to_image = vector_as_grid.permute(
+        vector_as_grid = vector_to_grid_shape.view(N_pred, N_pred, 10)
+        vector_to_image = vector_as_grid.unsqueeze(0).permute(
             0, 3, 1, 2
         )  # massage data into format expected by conv
         conv_layer = self.leaky_relu(self.conv1(vector_to_image))
@@ -205,11 +205,10 @@ class ExampleNetwork(nn.Module):
         # from the input layer to the output layer, aggregated over each tuple
         # or at least trying to approximate it
         # TODO: make this a more efficient neural net that directly finds that vector
-        batch_size, tuples_in_batch, input_or_output, vector_size = z.size()
-        num_tuples = batch_size * tuples_in_batch
+        input_or_output, batch_size, vector_size = z.size()
         # stack all the sets in the batch
-        z = z.view(num_tuples, input_or_output * vector_size)
-        z = torch.reshape(z, (1, num_tuples, 1024))
+        z = z.view(batch_size, input_or_output * vector_size)
+        z = torch.reshape(z, (1, batch_size, 1024))
         z = self.fc1(z)
         z = self.leaky_relu(z)
         # softmax to avoid gradient loss
@@ -275,13 +274,15 @@ class TaskNetwork(nn.Module):
         params = theta.view(num_layers, 2, 512)
         return params
 
-    def forward(self, x, theta):
+    def forward(self, batch, theta):
         """
 
         :param x: Input tensor to TaskNetwork, vector in embedding space
         :param theta: Tensor output from the HyperNetwork, used to define parameters
         :return:
         """
+        x, y = torch.split(batch, 1, dim=0)
+
         assert (
             theta.numel() == self.total_params
         ), f"Size of theta ({theta.numel()}) does not match total parameters ({self.total_params})"
@@ -291,7 +292,7 @@ class TaskNetwork(nn.Module):
             x = x * weight + bias
             if i < len(params) - 1:
                 x = F.relu(x)  # Activation for intermediary layers
-        return x
+        return x.squeeze()
 
 
 class MetamappingModel(nn.Module):
@@ -312,15 +313,29 @@ class MetamappingModel(nn.Module):
         self.hyper_network = HyperNetwork()
         self.task_network = TaskNetwork([512])
 
+    def encode_batch(self, input, output):
+        input = self.input_embedder(input)
+        output = self.output_encoder(output)
+        batch = torch.stack((input, output))
+        return batch
+
+    def calculate_loss(self, predicted_output, batch):
+        print("CALCULATING LOSS")
+
+
     def forward(self, batch):
-        input, output = torch.split(batch, 1, dim=2)
+        input, output = torch.split(batch, 1, dim=1)
+
+        batch = self.encode_batch(input, output)
         z_task = self.example_network(batch)
         task_params = self.hyper_network(z_task)
 
-        z_out = self.task_network(input, task_params)
-        predicted_output = self.output_decoder(z_out)
 
-        self.calculate_loss(predicted_output, batch)
+        z_out_batch = self.task_network(batch, task_params)
+        for i, prediction in enumerate(z_out_batch):
+            predicted_outputs = self.output_decoder(prediction)
+
+        self.calculate_loss(predicted_outputs, batch)
 
 
 class TaskBatcher(Dataset):
@@ -356,7 +371,6 @@ class TrainingDataset(Dataset):
             input = pad_to_30x30(load_grid_to_tensor(data_dict['input']))
             output = pad_to_30x30(load_grid_to_tensor(data_dict['output']))
             pair = torch.stack(tensors=(input, output), dim=1)
-            breakpoint()
             self.data.append(pair)
 
 
@@ -408,14 +422,18 @@ if __name__ == "__main__":
     #     batch = torch.stack(batch, dim=1)
     #
     #     batch = task_manager(batch)
-
+    metamapping_model = MetamappingModel()
     task_data = TaskBatcher("arc-agi_training_challenges.json", "arc-agi_training_solutions.json")
     for i in range(len(task_data)):
         task_name, task_train_test = task_data[i]
         task_dataset = TaskDataset(task_name, task_train_test)
         # returns a single TaskTensor of shape [1, 2, 1, 30, 30]
+        task_name_batch = None # TODO: use language encoders on the task names if necessary
+        task_batch = torch.stack([example['task_tensor'] for example in task_dataset], dim=0)
+        task_batch = torch.squeeze(task_batch)
+        train_step = metamapping_model(task_batch)
         breakpoint()
-        
+
 
 
 
