@@ -132,22 +132,24 @@ class OutputDecoder(nn.Module):
         hidden_layer = self.leaky_relu(vector_to_hidden_layer)
         hidden_layer_to_logits = self.fc2(hidden_layer)
         N_logits = self.softmax(hidden_layer_to_logits)
-        N_pred = N_logits.argmax(dim=0).item()
+        N_pred = N_logits.argmax(dim=0)
 
         # use the predicted size to construct a prediction grid
         vector_to_values_hidden_layer = self.fc_values(x)
         values_hidden_layer = self.leaky_relu(vector_to_values_hidden_layer)
 
-        self.fc_grid = nn.Linear(in_features=1024, out_features=N_pred * N_pred * 10)
+        # TODO: make this be a layer of set size instead to handle batches of different
+        # predictions
+        self.fc_grid = nn.Linear(in_features=1024, out_features=30 * 30 * 10)
         vector_to_grid_shape = self.fc_grid(values_hidden_layer)
-        vector_as_grid = vector_to_grid_shape.view(N_pred, N_pred, 10)
+        vector_as_grid = vector_to_grid_shape.view(batch_size, 30, 30, 10)
         vector_to_image = vector_as_grid.unsqueeze(0).permute(
             0, 3, 1, 2
         )  # massage data into format expected by conv
         conv_layer = self.leaky_relu(self.conv1(vector_to_image))
         softmax = self.softmax2d(conv_layer)
         results = softmax.argmax(dim=1)
-        return results
+        return N_pred, results
 
 
 class ExampleNetwork(nn.Module):
@@ -332,10 +334,9 @@ class MetamappingModel(nn.Module):
 
 
         z_out_batch = self.task_network(batch, task_params)
-        for i, prediction in enumerate(z_out_batch):
-            predicted_outputs = self.output_decoder(prediction)
+        predicted_outputs = self.output_decoder(z_out_batch)
 
-        self.calculate_loss(predicted_outputs, batch)
+        return predicted_outputs
 
 
 class TaskBatcher(Dataset):
@@ -423,6 +424,7 @@ if __name__ == "__main__":
     #
     #     batch = task_manager(batch)
     metamapping_model = MetamappingModel()
+    metamapping_loss = nn.MSELoss()
     task_data = TaskBatcher("arc-agi_training_challenges.json", "arc-agi_training_solutions.json")
     for i in range(len(task_data)):
         task_name, task_train_test = task_data[i]
