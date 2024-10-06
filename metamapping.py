@@ -125,6 +125,15 @@ class OutputDecoder(nn.Module):
         self.softmax2d = nn.Softmax2d()
 
     def forward(self, x):
+        """
+        Returns both the size of a grid and the prediction grid
+
+        Note to self: may need to tweak for the same neural network
+        layer to process both N_pred and values_pred, so that they're not
+        trying to independently learn the weights
+        :param x:
+        :return:
+        """
         batch_size = x.size(0)
 
         # Predict the size of the grid
@@ -132,24 +141,22 @@ class OutputDecoder(nn.Module):
         hidden_layer = self.leaky_relu(vector_to_hidden_layer)
         hidden_layer_to_logits = self.fc2(hidden_layer)
         N_logits = self.softmax(hidden_layer_to_logits)
-        N_pred = N_logits.argmax(dim=0)
+        N_pred = N_logits.argmax(dim=1)
 
-        # use the predicted size to construct a prediction grid
+        # construct a prediction grid
         vector_to_values_hidden_layer = self.fc_values(x)
         values_hidden_layer = self.leaky_relu(vector_to_values_hidden_layer)
 
-        # TODO: make this be a layer of set size instead to handle batches of different
-        # predictions
         self.fc_grid = nn.Linear(in_features=1024, out_features=30 * 30 * 10)
         vector_to_grid_shape = self.fc_grid(values_hidden_layer)
         vector_as_grid = vector_to_grid_shape.view(batch_size, 30, 30, 10)
-        vector_to_image = vector_as_grid.unsqueeze(0).permute(
+        vector_to_image = vector_as_grid.permute(
             0, 3, 1, 2
         )  # massage data into format expected by conv
         conv_layer = self.leaky_relu(self.conv1(vector_to_image))
         softmax = self.softmax2d(conv_layer)
-        results = softmax.argmax(dim=1)
-        return N_pred, results
+        values_pred = softmax.argmax(dim=1)
+        return N_pred, values_pred
 
 
 class ExampleNetwork(nn.Module):
@@ -321,9 +328,6 @@ class MetamappingModel(nn.Module):
         batch = torch.stack((input, output))
         return batch
 
-    def calculate_loss(self, predicted_output, batch):
-        print("CALCULATING LOSS")
-
 
     def forward(self, batch):
         input, output = torch.split(batch, 1, dim=1)
@@ -332,11 +336,18 @@ class MetamappingModel(nn.Module):
         z_task = self.example_network(batch)
         task_params = self.hyper_network(z_task)
 
+        # TODO: figure out implementation of the two training flows
 
-        z_out_batch = self.task_network(batch, task_params)
-        predicted_outputs = self.output_decoder(z_out_batch)
+        if np.random.random() > 0.5:
+            # task training flow
+            z_out_batch = self.task_network(batch, task_params)
+            N_pred, values_pred = self.output_decoder(z_out_batch)
 
-        return predicted_outputs
+            return N_pred, values_pred
+        else:
+            # metamapping training flow
+            z_transformed_task = self.task_network(batch, task_params)
+
 
 
 class TaskBatcher(Dataset):
@@ -433,7 +444,7 @@ if __name__ == "__main__":
         task_name_batch = None # TODO: use language encoders on the task names if necessary
         task_batch = torch.stack([example['task_tensor'] for example in task_dataset], dim=0)
         task_batch = torch.squeeze(task_batch)
-        train_step = metamapping_model(task_batch)
+        N_pred, task_values_pred = metamapping_model(task_batch)
         breakpoint()
 
 
