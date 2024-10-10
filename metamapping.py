@@ -348,6 +348,8 @@ class MetamappingModel(nn.Module):
         else:
             # metamapping training flow
             # TODO: pass in a batch of input/output tasks instead, assembled differently
+            # TODO: assuemble the batch of input/output tasks as a cartesian join
+            # of the current task name against all other tasks in the training set
             z_transformed_task = self.task_network(batch, task_params)
             return "meta", z_transformed_task
 
