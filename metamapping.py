@@ -34,7 +34,9 @@ def pad_to_30x30(x):
     pad_right = pad_w - pad_left
 
     # Apply padding
-    return F.pad(x, (pad_left, pad_right, pad_top, pad_bottom))
+    return F.pad(
+        x, (pad_left, pad_right, pad_top, pad_bottom), mode="constant", value=-1
+    )
 
 
 class GridEmbedder(nn.Module):
@@ -137,11 +139,11 @@ class OutputDecoder(nn.Module):
         batch_size = x.size(0)
 
         # Predict the size of the grid
-        vector_to_hidden_layer = self.fc1(x)
-        hidden_layer = self.leaky_relu(vector_to_hidden_layer)
-        hidden_layer_to_logits = self.fc2(hidden_layer)
-        N_logits = self.softmax(hidden_layer_to_logits)
-        N_pred = N_logits.argmax(dim=1)
+        # vector_to_hidden_layer = self.fc1(x)
+        # hidden_layer = self.leaky_relu(vector_to_hidden_layer)
+        # hidden_layer_to_logits = self.fc2(hidden_layer)
+        # N_logits = self.softmax(hidden_layer_to_logits)
+        # N_pred = N_logits.argmax(dim=1)
 
         # construct a prediction grid
         vector_to_values_hidden_layer = self.fc_values(x)
@@ -156,7 +158,7 @@ class OutputDecoder(nn.Module):
         conv_layer = self.leaky_relu(self.conv1(vector_to_image))
         softmax = self.softmax2d(conv_layer)
         values_pred = softmax.argmax(dim=1)
-        return N_pred, values_pred
+        return values_pred
 
 
 class ExampleNetwork(nn.Module):
@@ -328,7 +330,6 @@ class MetamappingModel(nn.Module):
         batch = torch.stack((input, output))
         return batch
 
-
     def forward(self, batch):
         input, output = torch.split(batch, 1, dim=1)
 
@@ -341,13 +342,14 @@ class MetamappingModel(nn.Module):
         if np.random.random() > 0.5:
             # task training flow
             z_out_batch = self.task_network(batch, task_params)
-            N_pred, values_pred = self.output_decoder(z_out_batch)
+            values_pred = self.output_decoder(z_out_batch)
 
-            return N_pred, values_pred
+            values_pred = self.cut_borders(values_pred)
+
+            return values_pred
         else:
             # metamapping training flow
             z_transformed_task = self.task_network(batch, task_params)
-
 
 
 class TaskBatcher(Dataset):
@@ -371,20 +373,21 @@ class TaskBatcher(Dataset):
         task_train_test = task_batch[1]
         return (task_name, task_train_test)
 
+
 class TrainingDataset(Dataset):
     """
     Loads training data into a batch of tuples of
     (input, output), which have been padded to 30x30 shape with -1
     """
+
     def __init__(self, train_data):
         self.data = []
 
         for data_dict in train_data:
-            input = pad_to_30x30(load_grid_to_tensor(data_dict['input']))
-            output = pad_to_30x30(load_grid_to_tensor(data_dict['output']))
+            input = pad_to_30x30(load_grid_to_tensor(data_dict["input"]))
+            output = pad_to_30x30(load_grid_to_tensor(data_dict["output"]))
             pair = torch.stack(tensors=(input, output), dim=1)
             self.data.append(pair)
-
 
     def __len__(self):
         return len(self.data)
@@ -393,15 +396,15 @@ class TrainingDataset(Dataset):
         return self.data[idx]
 
 
-
 class TaskDataset(Dataset):
     """
     Loads a dataset for a specific task
     """
+
     def __init__(self, task_name, task_train_test):
         self.task_name: str = task_name
-        self.train_data: list[dict] = task_train_test['train']
-        self.test_case: list[dict] = task_train_test['test']
+        self.train_data: list[dict] = task_train_test["train"]
+        self.test_case: list[dict] = task_train_test["test"]
 
         self.train_dataset = TrainingDataset(self.train_data)
 
@@ -410,7 +413,6 @@ class TaskDataset(Dataset):
 
     def __getitem__(self, idx):
         return {"task_name": self.task_name, "task_tensor": self.train_dataset[idx]}
-
 
 
 if __name__ == "__main__":
@@ -436,17 +438,19 @@ if __name__ == "__main__":
     #     batch = task_manager(batch)
     metamapping_model = MetamappingModel()
     metamapping_loss = nn.MSELoss()
-    task_data = TaskBatcher("arc-agi_training_challenges.json", "arc-agi_training_solutions.json")
+    task_data = TaskBatcher(
+        "arc-agi_training_challenges.json", "arc-agi_training_solutions.json"
+    )
     for i in range(len(task_data)):
         task_name, task_train_test = task_data[i]
         task_dataset = TaskDataset(task_name, task_train_test)
         # returns a single TaskTensor of shape [1, 2, 1, 30, 30]
-        task_name_batch = None # TODO: use language encoders on the task names if necessary
-        task_batch = torch.stack([example['task_tensor'] for example in task_dataset], dim=0)
+        task_name_batch = (
+            None  # TODO: use language encoders on the task names if necessary
+        )
+        task_batch = torch.stack(
+            [example["task_tensor"] for example in task_dataset], dim=0
+        )
         task_batch = torch.squeeze(task_batch)
         N_pred, task_values_pred = metamapping_model(task_batch)
         breakpoint()
-
-
-
-
