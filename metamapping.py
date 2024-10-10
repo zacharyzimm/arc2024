@@ -347,6 +347,7 @@ class MetamappingModel(nn.Module):
             return "task", values_pred
         else:
             # metamapping training flow
+            # TODO: pass in a batch of input/output tasks instead, assembled differently
             z_transformed_task = self.task_network(batch, task_params)
             return "meta", z_transformed_task
 
@@ -450,6 +451,7 @@ if __name__ == "__main__":
 
     def compute_meta_loss():
         # TODO: compute the training loss of a meta transformation
+        # assume the task names are meaningful
         pass
 
     for i in range(len(task_data)):
