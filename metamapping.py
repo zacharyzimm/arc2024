@@ -344,8 +344,6 @@ class MetamappingModel(nn.Module):
             z_out_batch = self.task_network(batch, task_params)
             values_pred = self.output_decoder(z_out_batch)
 
-            values_pred = self.cut_borders(values_pred)
-
             return "task", values_pred
         else:
             # metamapping training flow
@@ -442,6 +440,17 @@ if __name__ == "__main__":
     task_data = TaskBatcher(
         "arc-agi_training_challenges.json", "arc-agi_training_solutions.json"
     )
+    def compute_task_loss():
+        """
+        Cuts away the -1 values that define the border implicitly
+        to return a grid that is compared to training answer
+        :return:
+        """
+        pass
+
+    def compute_meta_loss():
+        pass
+
     for i in range(len(task_data)):
         task_name, task_train_test = task_data[i]
         task_dataset = TaskDataset(task_name, task_train_test)
@@ -453,5 +462,11 @@ if __name__ == "__main__":
             [example["task_tensor"] for example in task_dataset], dim=0
         )
         task_batch = torch.squeeze(task_batch)
-        training_type, task_values_pred = metamapping_model(task_batch)
+        training_type, values_pred = metamapping_model(task_batch)
+
+        if training_type == "meta":
+            compute_meta_loss(values_pred)
+        elif training_type == "task":
+            compute_task_loss(values_pred)
+
         breakpoint()
