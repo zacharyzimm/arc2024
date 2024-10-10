@@ -346,10 +346,11 @@ class MetamappingModel(nn.Module):
 
             values_pred = self.cut_borders(values_pred)
 
-            return values_pred
+            return "task", values_pred
         else:
             # metamapping training flow
             z_transformed_task = self.task_network(batch, task_params)
+            return "meta", z_transformed_task
 
 
 class TaskBatcher(Dataset):
@@ -452,5 +453,5 @@ if __name__ == "__main__":
             [example["task_tensor"] for example in task_dataset], dim=0
         )
         task_batch = torch.squeeze(task_batch)
-        N_pred, task_values_pred = metamapping_model(task_batch)
+        training_type, task_values_pred = metamapping_model(task_batch)
         breakpoint()
