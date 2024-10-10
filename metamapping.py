@@ -149,9 +149,9 @@ class OutputDecoder(nn.Module):
         vector_to_values_hidden_layer = self.fc_values(x)
         values_hidden_layer = self.leaky_relu(vector_to_values_hidden_layer)
 
-        self.fc_grid = nn.Linear(in_features=1024, out_features=30 * 30 * 10)
+        self.fc_grid = nn.Linear(in_features=1024, out_features=self.N_max ** 2 * 10)
         vector_to_grid_shape = self.fc_grid(values_hidden_layer)
-        vector_as_grid = vector_to_grid_shape.view(batch_size, 30, 30, 10)
+        vector_as_grid = vector_to_grid_shape.view(batch_size, self.N_max, self.N_max, 10)
         vector_to_image = vector_as_grid.permute(
             0, 3, 1, 2
         )  # massage data into format expected by conv
